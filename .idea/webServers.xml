@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="5bb1722e-de29-4b4c-b42a-a25927ce4ca8" name="3090">
+        <fileTransfer rootFolder="/data/hjp/autoattack/whitebox_attack" accessType="SFTP" host="10.170.19.15" port="1234" sshConfigId="e70e3ed0-094e-4451-b3c6-8c63b0b92684" sshConfig="lthpc@10.170.19.15:1234 key" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
