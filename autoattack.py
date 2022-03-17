@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 import torch
-
+from torch.nn import functional as F
 from other_utils import Logger
 import torch.nn as nn
 import checks
@@ -53,6 +53,8 @@ class PGD(nn.Module):
         self.num_class = num_class
         self.loss_dict = {'MT': self.MT_Loss, 'CE': nn.CrossEntropyLoss(),
                           'DLR': dlr_loss}
+        self.ODI_iter_eps = eps
+        self.ODI_nb_iter = 2
 
     def MT_Loss(self, logits, y, index, loss_func='MT'):
         if loss_func == 'MT':
@@ -101,9 +103,11 @@ class PGD(nn.Module):
         return adv_x
 
     def get_adv_x(self, x, y, init_flag=False, x_init=None, loss_func=nn.CrossEntropyLoss(),
-                  MT_flag=False, MT_index=None):
+                  MT_flag=False, MT_index=None, odi_flag=False, odi_loss='MSE'):
         if init_flag:
             delta = (x_init - x).clone().detach()
+        elif odi_flag:
+            delta = self.ODI(x, loss_func=odi_loss) - x
         else:
             delta = torch.Tensor(np.random.uniform(-self.eps, self.eps, x.shape)).type_as(x).to(self.device)
         delta.requires_grad_()
@@ -149,14 +153,15 @@ class PGD(nn.Module):
             invalid[invalid_copy] = torch.max(self.model(adv_x[invalid_copy]), dim=1)[1] == y[invalid_copy]
         return adv_x
 
-    def combine_attack(self, x, y, loss_list=None, k=5):
+    def combine_attack(self, x, y, loss_list=None, k=5, odi_flag=False, odi_loss='ODI'):
         if loss_list is None:
             return x
         else:
             if loss_list[0][:2] == 'MT':
                 adv_x = self.get_MT_adv_x(x, y, k, loss_list[0])
             else:
-                adv_x = self.get_adv_x(x, y, x_init=None, loss_func=self.loss_dict[loss_list[0]])
+                adv_x = self.get_adv_x(x, y, x_init=None, loss_func=self.loss_dict[loss_list[0]], odi_flag=odi_flag,
+                                       odi_loss=odi_loss)
             invalid = torch.max(self.model(adv_x), dim=1)[1] == y
             for loss_func in loss_list[1:]:
                 self.model.reset()
@@ -171,6 +176,27 @@ class PGD(nn.Module):
                 invalid_copy = invalid.clone()
                 invalid[invalid_copy] = torch.max(self.model(adv_x[invalid_copy]), dim=1)[1] == y[invalid_copy]
         return adv_x
+
+    def ODI(self, x, loss_func='MSE'):
+        x_adv = x.clone().detach()
+        x_adv.requires_grad = True
+        for _ in range(self.ODI_nb_iter):
+            output = self.model(x_adv)
+            if loss_func == 'OID':
+                randvecter = torch.Tensor(np.random.uniform(-1, 1, output.shape)).type_as(output).to(self.device)
+                loss = (randvecter * output).sum()
+            elif loss_func == 'KL':
+                loss = F.kl_div(F.log_softmax(self.model(x_adv), dim=1), F.softmax(self.model(x), dim=1), reduction='sum')
+            elif loss_func == 'MSE':
+                loss = ((F.softmax(self.model(x_adv), dim=1) - F.softmax(self.model(x), dim=1)) ** 2).mean()
+            else:
+                pass
+            loss.backward()
+            x_adv.data += self.ODI_iter_eps * x_adv.grad.data.sign()
+            x_adv.data = torch.clamp(torch.min(torch.max(x_adv, x - self.eps), x + self.eps), 0.0, 1.0)
+            x_adv.grad.data.zero_()
+        return x_adv.clone().detach()
+
 
 
 class AutoAttack():

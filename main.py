@@ -114,7 +114,7 @@ if __name__ == '__main__':
     total = 0
     for x, y in loop:
         x, y = x.to(device), y.to(device)
-        adv_x = pgd.combine_attack(x, y, loss_list=['DLR', 'MT-DLR'], k=8)
+        adv_x = pgd.combine_attack(x, y, loss_list=['DLR'], odi_flag=False, odi_loss='MSE')
         acc_num = (torch.max(model(adv_x), dim=1)[1] == y).float().sum().item()
         total += acc_num
     print(total/10000)
